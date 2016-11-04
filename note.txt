@@ -1,0 +1,67 @@
+/*
+1、内存占用太多，准备减少任务个数，减少内存占用
+
+OSEventTbl              0x20000050  0x1068  Data  Gb  os_core.o [1]
+任务时间分配太多内存
+typedef struct os_event {
+    INT8U    OSEventType;                    /* Type of event control block (see OS_EVENT_TYPE_xxxx)    */
+    void    *OSEventPtr;                     /* Pointer to message or queue structure                   */
+    INT16U   OSEventCnt;                     /* Semaphore Count (not used if other EVENT type)          */
+    OS_PRIO  OSEventGrp;                     /* Group corresponding to tasks waiting for event to occur */
+    OS_PRIO  OSEventTbl[OS_EVENT_TBL_SIZE];  /* List of tasks waiting for event to occur                */
+
+#if OS_EVENT_NAME_EN > 0u
+    INT8U   *OSEventName;
+#endif
+} OS_EVENT;
+OS_EVENT          OSEventTbl[OS_MAX_EVENTS];/* Table of EVENT control blocks                   */
+
+因为在 OS_cfg.h中定义任务个数为175，初始化会占用太多，可以减少任务个数，大幅度减少内存占用
+#define OS_MAX_EVENTS           175    /* Max. number of event control blocks in your application      */
+
+编译后
+  1016 bytes of  readonly  data memory
+  20195 bytes of readwrite data memory
+以目前的任务需求量计算，支持10~15就足够用了
+以10个任务来算：编译后
+  1016 bytes of readonly  data memory
+  14699 bytes of readwrite data memory
+以15个任务来算：编译后
+OSEventTbl              0x20001e08  0x168  Data  Gb  os_core.o [1]
+  1016 bytes of readonly  data memory
+  14819 bytes of readwrite data memory
+  节约了大量的内存
+
+
+2、 在DEBUG模式下
+ debug时，进入RCC_DeInit 执行RCC->CR |= (u32)0x00000001;后及导致硬件 App_Fault_ISR错误
+ 但是在Flash下的debug就不会
+ 
+3、由于在bsp_int.c中void  BSP_IntHandlerEXTI9_5 (void) { BSP_IntHandler(BSP_INT_ID_EXTI9_5); }
+   会调用 static  void  BSP_IntHandler (CPU_DATA  int_id)
+{
+    CPU_FNCT_VOID  isr;
+    CPU_SR_ALLOC();
+
+
+    CPU_CRITICAL_ENTER();                                       /* Tell the OS that we are starting an ISR            */
+
+    OSIntEnter();
+
+    CPU_CRITICAL_EXIT();
+
+    if (int_id < BSP_INT_SRC_NBR) {
+        isr = BSP_IntVectTbl[int_id];
+        if (isr != (CPU_FNCT_VOID)0) {
+            isr();
+        }
+    }
+
+    OSIntExit();                                                /* Tell the OS that we are leaving the ISR            */
+}
+
+ 把bsp_int.c中void  BSP_IntHandlerEXTI9_5 (void) { BSP_IntHandler(BSP_INT_ID_EXTI9_5); }
+ 修改为void  BSP_IntHandlerEXTI9_5 (void) { EXTI9_5ISR_Handler(); }
+     (void)  { BSP_IntHandler(BSP_INT_ID_EXTI9_5);         }
+     
+*/    
